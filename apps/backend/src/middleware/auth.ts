@@ -1,5 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
-import { parseCookies, SESSION_COOKIE_NAME } from "../lib/cookies.ts";
+import {
+  LEGACY_SESSION_COOKIE_NAME,
+  parseCookies,
+  SESSION_COOKIE_NAME,
+} from "../lib/cookies.ts";
 import { HttpError } from "../lib/errors.ts";
 import { findSession } from "../lib/session.ts";
 
@@ -11,7 +15,7 @@ function getSessionToken(req: Request) {
   }
 
   const cookies = parseCookies(req.headers.cookie);
-  return cookies[SESSION_COOKIE_NAME];
+  return cookies[SESSION_COOKIE_NAME] ?? cookies[LEGACY_SESSION_COOKIE_NAME];
 }
 
 export async function requireAuth(

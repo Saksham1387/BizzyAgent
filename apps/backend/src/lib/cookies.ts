@@ -1,10 +1,12 @@
 import type { Response } from "express";
 
 export const SESSION_COOKIE_NAME =
-  process.env.SESSION_COOKIE_NAME ?? "cex_session";
+  process.env.SESSION_COOKIE_NAME ?? "bizzy_session";
+export const LEGACY_SESSION_COOKIE_NAME = "cex_session";
 
 export const GITHUB_STATE_COOKIE_NAME =
-  process.env.GITHUB_STATE_COOKIE_NAME ?? "cex_github_state";
+  process.env.GITHUB_STATE_COOKIE_NAME ?? "bizzy_github_state";
+export const LEGACY_GITHUB_STATE_COOKIE_NAME = "cex_github_state";
 
 const COOKIE_SECURE = process.env.COOKIE_SECURE
   ? process.env.COOKIE_SECURE === "true"
@@ -17,7 +19,7 @@ export function setSessionCookie(
 ) {
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "lax" as const,
     secure: COOKIE_SECURE,
     expires: expiresAt,
     path: "/",
@@ -25,12 +27,14 @@ export function setSessionCookie(
 }
 
 export function clearSessionCookie(res: Response) {
-  res.clearCookie(SESSION_COOKIE_NAME, {
+  const options = {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "lax" as const,
     secure: COOKIE_SECURE,
     path: "/",
-  });
+  };
+  res.clearCookie(SESSION_COOKIE_NAME, options);
+  res.clearCookie(LEGACY_SESSION_COOKIE_NAME, options);
 }
 
 export function setGithubStateCookie(res: Response, state: string) {
@@ -44,12 +48,14 @@ export function setGithubStateCookie(res: Response, state: string) {
 }
 
 export function clearGithubStateCookie(res: Response) {
-  res.clearCookie(GITHUB_STATE_COOKIE_NAME, {
+  const options = {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "lax" as const,
     secure: COOKIE_SECURE,
     path: "/api/github",
-  });
+  };
+  res.clearCookie(GITHUB_STATE_COOKIE_NAME, options);
+  res.clearCookie(LEGACY_GITHUB_STATE_COOKIE_NAME, options);
 }
 
 export function parseCookies(header: string | undefined) {

@@ -1,6 +1,11 @@
 {
   "name": "agent",
   "module": "index.ts",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
   "type": "module",
   "private": true,
   "devDependencies": {

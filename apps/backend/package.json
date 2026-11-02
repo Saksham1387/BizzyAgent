@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@types/express": "^5.0.6",
+    "agent": "workspace:*",
     "db": "workspace:*",
     "drizzle-orm": "^1.0.0-rc.5",
     "express": "^5.3.0"

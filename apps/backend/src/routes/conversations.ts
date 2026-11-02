@@ -1,6 +1,12 @@
 import { Router } from "express";
-import { and, eq } from "drizzle-orm";
-import { conversationsTable, db, repositoriesTable, type Repository } from "db";
+import { and, asc, desc, eq } from "drizzle-orm";
+import {
+  conversationsTable,
+  db,
+  messagesTable,
+  repositoriesTable,
+  type Repository,
+} from "db";
 import { HttpError } from "../lib/errors.ts";
 import { isUuid, optionalString, requireString } from "../lib/http.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -99,6 +105,74 @@ async function findOrCreateRepository(
 
   return existing;
 }
+
+conversationsRouter.get("/", requireAuth, async (req, res) => {
+  const rows = await db
+    .select({
+      conversation: conversationsTable,
+      repository: repositoriesTable,
+    })
+    .from(conversationsTable)
+    .innerJoin(
+      repositoriesTable,
+      eq(conversationsTable.repositoryId, repositoriesTable.id),
+    )
+    .where(eq(conversationsTable.userId, req.user!.id))
+    .orderBy(desc(conversationsTable.updatedAt));
+
+  res.json({
+    conversations: rows.map(({ conversation, repository }) => ({
+      ...conversation,
+      repository,
+    })),
+  });
+});
+
+conversationsRouter.get("/:id", requireAuth, async (req, res) => {
+  const rawConversationId = req.params.id;
+  const conversationId = Array.isArray(rawConversationId)
+    ? rawConversationId[0]
+    : rawConversationId;
+
+  if (!conversationId || !isUuid(conversationId)) {
+    throw new HttpError(400, "Conversation id must be a valid UUID");
+  }
+
+  const [row] = await db
+    .select({
+      conversation: conversationsTable,
+      repository: repositoriesTable,
+    })
+    .from(conversationsTable)
+    .innerJoin(
+      repositoriesTable,
+      eq(conversationsTable.repositoryId, repositoriesTable.id),
+    )
+    .where(
+      and(
+        eq(conversationsTable.id, conversationId),
+        eq(conversationsTable.userId, req.user!.id),
+        eq(repositoriesTable.userId, req.user!.id),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new HttpError(404, "Conversation not found");
+  }
+
+  const messages = await db
+    .select()
+    .from(messagesTable)
+    .where(eq(messagesTable.conversationId, conversationId))
+    .orderBy(asc(messagesTable.createdAt));
+
+  res.json({
+    conversation: row.conversation,
+    repository: row.repository,
+    messages,
+  });
+});
 
 conversationsRouter.post("/", requireAuth, async (req, res) => {
   const userId = req.user!.id;

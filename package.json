@@ -1,5 +1,5 @@
 {
-  "name": "cex",
+  "name": "bizzy",
   "private": true,
   "scripts": {
     "build": "turbo run build",

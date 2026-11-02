@@ -1,5 +1,6 @@
 import express from "express";
 import { authRouter } from "./src/routes/auth.ts";
+import { chatRouter } from "./src/routes/chat.ts";
 import { conversationsRouter } from "./src/routes/conversations.ts";
 import { githubRouter } from "./src/routes/github.ts";
 import { errorHandler, notFoundHandler } from "./src/middleware/error.ts";
@@ -20,6 +21,8 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/github", githubRouter);
+app.use("/api/chat", chatRouter);
+app.use("/chat", chatRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
