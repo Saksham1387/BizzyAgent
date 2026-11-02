@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useTheme } from "@/components/theme-provider";
+import { SidebarFooter } from "@/components/ui/sidebar";
 import { apiFetch } from "@/lib/api";
 import type { ConversationWithRepository, GitHubStatus } from "@/lib/types";
 
@@ -229,7 +230,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
             )}
           </div>
 
-          <div className="space-y-2.5 border-t border-zinc-200 p-3">
+          <SidebarFooter className="gap-2.5 border-t border-zinc-200 p-3">
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-2.5">
               <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                 <GitHubMark />
@@ -284,7 +285,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
               </span>
               <span aria-hidden>{theme === "dark" ? "◐" : "☼"}</span>
             </button>
-          </div>
+          </SidebarFooter>
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">{children}</main>

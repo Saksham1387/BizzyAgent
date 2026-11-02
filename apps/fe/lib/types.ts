@@ -39,6 +39,14 @@ export type ConversationWithRepository = Conversation & {
 
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
+export type ConversationArtifact = {
+  kind: "issue" | "pull_request";
+  number: number;
+  title: string;
+  url: string;
+  repository: string;
+};
+
 export type Message = {
   id: string;
   conversationId: string;

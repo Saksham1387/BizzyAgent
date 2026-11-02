@@ -12,7 +12,10 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useChatData } from "@/components/chat-shell";
-import { RepoInspector } from "@/components/repo-inspector";
+import {
+  ArtifactCard,
+  parseConversationArtifacts,
+} from "@/components/artifact-card";
 import { AiToolActivity } from "@/components/ai-tool-activity";
 import { apiFetch } from "@/lib/api";
 import type { ChatResponse, ConversationDetail, Message } from "@/lib/types";
@@ -245,7 +248,7 @@ export function ConversationView({
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 backdrop-blur">
+        {/* <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 backdrop-blur">
           <div className="min-w-0">
             <h1 className="truncate text-sm font-semibold text-zinc-900">
               {data.conversation.title}
@@ -255,7 +258,7 @@ export function ConversationView({
           <span className="shrink-0 rounded-full border border-zinc-200 px-2.5 py-1 text-[11px] font-medium text-zinc-500">
             {data.repository.defaultBranch}
           </span>
-        </header>
+        </header> */}
 
         {github && !github.connected ? (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-xs text-amber-800">
@@ -293,6 +296,10 @@ export function ConversationView({
           ) : (
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6">
               {turns.map((turn) => {
+                const artifacts = turn.assistantMessages.flatMap((message) =>
+                  parseConversationArtifacts(message.metadata?.artifacts),
+                );
+
                 return (
                   <div className="space-y-3" key={turn.id}>
                     {turn.userMessage ? (
@@ -330,6 +337,12 @@ export function ConversationView({
                                 <MarkdownMessage content={message.content} />
                               ) : null}
                             </div>
+                          ))}
+                          {artifacts.map((artifact) => (
+                            <ArtifactCard
+                              artifact={artifact}
+                              key={`${artifact.kind}-${artifact.number}-${artifact.repository}`}
+                            />
                           ))}
                         </div>
                       </div>
@@ -390,12 +403,6 @@ export function ConversationView({
           </div>
         </form>
       </div>
-      <RepoInspector
-        defaultBranch={data.repository.defaultBranch}
-        key={`${data.repository.owner}/${data.repository.name}`}
-        owner={data.repository.owner}
-        repo={data.repository.name}
-      />
     </div>
   );
 }

@@ -8,6 +8,14 @@ import { requireAuth } from "../middleware/auth.ts";
 
 export const chatRouter = Router();
 
+type CreatedArtifact = {
+  kind: "issue" | "pull_request";
+  number: number;
+  title: string;
+  url: string;
+  repository: string;
+};
+
 chatRouter.post("/", requireAuth, async (req, res) => {
   const conversationId = requireString(
     req.body?.conversationId,
@@ -108,14 +116,79 @@ chatRouter.post("/", requireAuth, async (req, res) => {
   ) {
     agentMessages.push({ role: "assistant", content: result.answer });
   }
-  const toolNames = new Map<string, string>();
+  const toolCallsById = new Map<string, { name: string; arguments: string }>();
   for (const message of agentMessages) {
     if (message.role === "assistant") {
       for (const call of message.toolCalls ?? []) {
-        toolNames.set(call.id, call.function.name);
+        toolCallsById.set(call.id, {
+          name: call.function.name,
+          arguments: call.function.arguments,
+        });
       }
     }
   }
+
+  const artifacts: CreatedArtifact[] = [];
+  for (const message of agentMessages) {
+    if (
+      message.role !== "tool" ||
+      typeof message.content !== "string" ||
+      !message.content
+    ) {
+      continue;
+    }
+    const call = toolCallsById.get(message.toolCallId);
+    if (
+      !call ||
+      (call.name !== "github_create_issue" &&
+        call.name !== "github_create_pull_request")
+    ) {
+      continue;
+    }
+
+    let output: unknown;
+    let input: unknown;
+    try {
+      output = JSON.parse(message.content);
+      input = JSON.parse(call.arguments);
+    } catch {
+      continue;
+    }
+
+    if (typeof output !== "object" || output === null) continue;
+    const created = output as { number?: unknown; url?: unknown };
+    if (
+      typeof created.number !== "number" ||
+      !Number.isSafeInteger(created.number) ||
+      created.number < 1 ||
+      typeof created.url !== "string" ||
+      !/^https:\/\/github\.com\//.test(created.url)
+    ) {
+      continue;
+    }
+
+    const issueInput =
+      typeof input === "object" && input !== null
+        ? (input as { title?: unknown })
+        : {};
+    artifacts.push({
+      kind: call.name === "github_create_issue" ? "issue" : "pull_request",
+      number: created.number,
+      title:
+        typeof issueInput.title === "string" && issueInput.title.trim()
+          ? issueInput.title.trim()
+          : call.name === "github_create_issue"
+            ? "New issue"
+            : "New pull request",
+      url: created.url,
+      repository: conversation.repository.fullName,
+    });
+  }
+
+  let finalAssistantIndex = -1;
+  agentMessages.forEach((message, index) => {
+    if (message.role === "assistant") finalAssistantIndex = index;
+  });
 
   const [userMessage, agentMessageRows] = await db.transaction(async (tx) => {
     const createdAt = Date.now();
@@ -140,7 +213,10 @@ chatRouter.post("/", requireAuth, async (req, res) => {
           role: "assistant" as const,
           content: typeof message.content === "string" ? message.content : null,
           toolCalls: message.toolCalls ?? null,
-          metadata: { repo: conversation.repository.fullName },
+          metadata: {
+            repo: conversation.repository.fullName,
+            ...(index === finalAssistantIndex ? { artifacts } : {}),
+          },
           createdAt: new Date(createdAt + index + 1),
         };
       }
@@ -150,7 +226,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         role: "tool" as const,
         content: typeof message.content === "string" ? message.content : null,
         toolCallId: message.toolCallId,
-        toolName: toolNames.get(message.toolCallId) ?? "unknown",
+        toolName: toolCallsById.get(message.toolCallId)?.name ?? "unknown",
         createdAt: new Date(createdAt + index + 1),
       };
     });

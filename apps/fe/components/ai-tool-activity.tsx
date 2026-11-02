@@ -118,7 +118,7 @@ export function AiToolActivity({
   return (
     <details
       aria-label="Agent tool activity"
-      className="my-2 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50/70 text-left"
+      className="my-2 overflow-hidden rounded-xl border border-zinc-200 bg-zinc text-left"
     >
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-2.5 text-xs font-medium marker:hidden">
         <span

@@ -1,159 +1,77 @@
-# Turborepo starter
+<p align="center">
+  <img src="apps/fe/public/bizzy-logo.png" alt="Bizzy logo" width="144" />
+</p>
 
-This Turborepo starter is maintained by the Turborepo core team.
+<h1 align="center">Bizzy</h1>
 
-## Using this example
+<p align="center">A cloud coding agent for GitHub repositories.</p>
 
-Run the following command:
+Bizzy lets you work with a coding agent through a web chat. Choose a repository, describe a task, and the agent works in an isolated Linux sandbox. It can inspect repository issues and pull requests, change code, run shell commands, and open a pull request with its changes.
 
-```sh
-npx create-turbo@latest
-```
+## What Bizzy can do
 
-## What's inside?
+- Clone the selected repository into an isolated E2B sandbox and inspect or edit its files.
+- Run Bash commands in the sandbox, including repository-provided checks such as tests, lint, and type checking.
+- Delegate a self-contained task to one subagent. Subagents get Bash access to the same sandbox and cannot delegate further.
+- List repository issues, filtered by state and labels, and create issues.
+- Update an issue's title, body, or open/closed state.
+- Inspect pull request details and read check runs and commit statuses for its latest commit.
+- Commit sandbox changes to a new branch, push it, and create a pull request.
+- Save tool calls and tool results with conversation messages so they can be reviewed in the chat.
+- Render successfully created issues and pull requests as linked artifacts in the conversation.
 
-This Turborepo includes the following packages/apps:
+## Current limits
 
-### Apps and Packages
+- Each conversation is tied to one repository available to the installed GitHub App. Bizzy cannot access repositories outside that installation's permissions.
+- Each agent run starts a fresh sandbox and makes a shallow clone of the repository's configured URL. Local files and unpushed changes do not carry over to the next run. Push changes in a pull request if you want them to persist.
+- The agent does not currently fetch an existing PR branch into its sandbox. Its PR inspection tool returns metadata and check results; there is no dedicated tool for retrieving changed files or diffs.
+- Issue updates are limited to title, body, and open/closed state. There are no tools for issue comments, labels, assignees, or milestones.
+- PR operations are limited to creating a PR and inspecting its details/checks. Bizzy cannot merge or close PRs, request reviews, comment on PRs, or rerun/cancel checks.
+- There is no built-in browser interaction or visual testing tool. The agent can run project commands in Bash when the repository provides the needed setup.
+- An agent run is limited to 10 model iterations by default, a 10-minute sandbox by default, and 120 seconds per shell command. These defaults are configurable in the agent code.
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+GitHub access uses short-lived installation tokens on the server. The GitHub App must be installed on the selected repository and granted the permissions needed for the requested operation. Bizzy does not send those tokens to the model.
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## Run locally
 
-### Utilities
+Requirements: Bun 1.3.5 or newer, Node.js 24 or newer, a configured database, an OpenRouter API key, and a GitHub App installation with repository access.
 
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
-```
-
-Without global `turbo`, use your package manager:
+Install workspace dependencies and start the apps:
 
 ```sh
-cd my-turborepo
-npx turbo build
-bun exec turbo build
-bun exec turbo build
+bun install
+bun run dev
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+The frontend runs on port `3000` by default and proxies API requests to the backend on port `3001`. Set `BACKEND_URL` if the backend runs elsewhere. The backend needs `DATABASE_URL`, `OPENROUTER_API_KEY`, and GitHub App credentials (`GITHUB_APP_ID` plus `GITHUB_PRIVATE_KEY` or `GITHUB_PRIVATE_KEY_PATH`). Keep private keys and API keys out of source control.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+The root scripts also provide:
 
 ```sh
-turbo build --filter=docs
+bun run build
+bun run lint
+bun run check-types
 ```
 
-Without global `turbo`:
+## Workspace layout
 
-```sh
-npx turbo build --filter=docs
-bun exec turbo build --filter=docs
-bun exec turbo build --filter=docs
-```
+- `apps/fe` — Next.js web app for authentication, repository selection, chat, and tool activity.
+- `apps/backend` — authenticated API, persistence, GitHub routes, and chat orchestration.
+- `apps/agent` — sandboxed coding agent, tool definitions, and GitHub App client.
+- `packages/db` — database schema, migrations, and database client.
+- `packages/ui` — shared UI package.
 
-### Develop
+## Configuration reference
 
-To develop all apps and packages, run the following command:
+Common environment variables include:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-bun exec turbo dev
-bun exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-bun exec turbo dev --filter=web
-bun exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-bun exec turbo login
-bun exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-bun exec turbo link
-bun exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+| Variable                                          | Purpose                                                                      |
+| ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`                                    | Database connection string.                                                  |
+| `OPENROUTER_API_KEY`                              | API key used by the agent model.                                             |
+| `OPENROUTER_MODEL`                                | Optional model override.                                                     |
+| `GITHUB_APP_ID`                                   | GitHub App identifier.                                                       |
+| `GITHUB_PRIVATE_KEY` or `GITHUB_PRIVATE_KEY_PATH` | GitHub App private key.                                                      |
+| `GITHUB_INSTALLATION_ID`                          | Optional installation ID for standalone agent use.                           |
+| `BACKEND_URL`                                     | Backend URL used by the frontend proxy; defaults to `http://localhost:3001`. |
+| `PORT`                                            | Backend port; defaults to `3001`.                                            |
