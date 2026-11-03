@@ -129,6 +129,21 @@ export const conversationsTable = pgTable(
   ],
 );
 
+export const conversationSandboxesTable = pgTable("conversation_sandboxes", {
+  conversationId: uuid("conversation_id")
+    .primaryKey()
+    .references(() => conversationsTable.id, { onDelete: "cascade" }),
+  sandboxId: text("sandbox_id"),
+  snapshotId: text("snapshot_id"),
+  workspaceReady: boolean("workspace_ready").notNull().default(false),
+  lockToken: uuid("lock_token"),
+  lockExpiresAt: timestamp("lock_expires_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 export const messagesTable = pgTable(
   "messages",
   {
@@ -162,5 +177,7 @@ export type Repository = typeof repositoriesTable.$inferSelect;
 export type NewRepository = typeof repositoriesTable.$inferInsert;
 export type Conversation = typeof conversationsTable.$inferSelect;
 export type NewConversation = typeof conversationsTable.$inferInsert;
+export type ConversationSandbox =
+  typeof conversationSandboxesTable.$inferSelect;
 export type Message = typeof messagesTable.$inferSelect;
 export type NewMessage = typeof messagesTable.$inferInsert;

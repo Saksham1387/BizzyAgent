@@ -23,7 +23,7 @@ Bizzy lets you work with a coding agent through a web chat. Choose a repository,
 ## Current limits
 
 - Each conversation is tied to one repository available to the installed GitHub App. Bizzy cannot access repositories outside that installation's permissions.
-- Each agent run starts a fresh sandbox and makes a shallow clone of the repository's configured URL. Local files and unpushed changes do not carry over to the next run. Push changes in a pull request if you want them to persist.
+- Each conversation keeps its own sandbox workspace across messages. Bizzy pauses the sandbox between turns and saves a filesystem snapshot so it can restore the workspace if the sandbox expires. Deleting the conversation also removes its sandbox and saved snapshot.
 - The agent does not currently fetch an existing PR branch into its sandbox. Its PR inspection tool returns metadata and check results; there is no dedicated tool for retrieving changed files or diffs.
 - Issue updates are limited to title, body, and open/closed state. There are no tools for issue comments, labels, assignees, or milestones.
 - PR operations are limited to creating a PR and inspecting its details/checks. Bizzy cannot merge or close PRs, request reviews, comment on PRs, or rerun/cancel checks.

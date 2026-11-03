@@ -1,6 +1,9 @@
 import { Router } from "express";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { deleteConversationWorkspace } from "agent";
 import {
+  conversationSandboxesTable,
   conversationsTable,
   db,
   messagesTable,
@@ -259,19 +262,92 @@ conversationsRouter.delete("/:id", requireAuth, async (req, res) => {
     throw new HttpError(400, "Conversation id must be a valid UUID");
   }
 
-  const [deleted] = await db
-    .delete(conversationsTable)
+  const [existingConversation] = await db
+    .select({ id: conversationsTable.id })
+    .from(conversationsTable)
     .where(
       and(
         eq(conversationsTable.id, conversationId),
         eq(conversationsTable.userId, req.user!.id),
       ),
     )
-    .returning({ id: conversationsTable.id });
+    .limit(1);
 
-  if (!deleted) {
+  if (!existingConversation) {
     throw new HttpError(404, "Conversation not found");
   }
 
-  res.status(204).end();
+  await db
+    .insert(conversationSandboxesTable)
+    .values({ conversationId })
+    .onConflictDoNothing();
+
+  const lockToken = randomUUID();
+  const now = new Date();
+  const [lease] = await db
+    .update(conversationSandboxesTable)
+    .set({
+      lockToken,
+      lockExpiresAt: new Date(now.getTime() + 30 * 60_000),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(conversationSandboxesTable.conversationId, conversationId),
+        or(
+          isNull(conversationSandboxesTable.lockToken),
+          isNull(conversationSandboxesTable.lockExpiresAt),
+          lt(conversationSandboxesTable.lockExpiresAt, now),
+        ),
+      ),
+    )
+    .returning({ conversationId: conversationSandboxesTable.conversationId });
+
+  if (!lease) {
+    throw new HttpError(
+      409,
+      "This conversation is currently processing a message",
+    );
+  }
+
+  try {
+    const [workspace] = await db
+      .select({
+        sandboxId: conversationSandboxesTable.sandboxId,
+        snapshotId: conversationSandboxesTable.snapshotId,
+      })
+      .from(conversationSandboxesTable)
+      .where(eq(conversationSandboxesTable.conversationId, conversationId))
+      .limit(1);
+
+    const [deleted] = await db
+      .delete(conversationsTable)
+      .where(
+        and(
+          eq(conversationsTable.id, conversationId),
+          eq(conversationsTable.userId, req.user!.id),
+        ),
+      )
+      .returning({ id: conversationsTable.id });
+
+    if (!deleted) {
+      throw new HttpError(404, "Conversation not found");
+    }
+
+    await deleteConversationWorkspace(
+      workspace?.sandboxId ?? null,
+      workspace?.snapshotId ?? null,
+    );
+    res.status(204).end();
+  } finally {
+    await db
+      .update(conversationSandboxesTable)
+      .set({ lockToken: null, lockExpiresAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(conversationSandboxesTable.conversationId, conversationId),
+          eq(conversationSandboxesTable.lockToken, lockToken),
+        ),
+      );
+  }
 });

@@ -1,0 +1,175 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "f4e3ba57-787d-4ce9-9838-f72b0694d7cf",
+  "prevIds": ["f7911bbd-c328-4ac0-a83a-98e584ee1fb6"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "conversation_sandboxes"],
+      "writes": [
+        "s|tbl|public.conversation_sandboxes",
+        "n|tbl|public.conversation_sandboxes",
+        "e|tbl|public.conversation_sandboxes",
+        "n|rel|public.conversation_sandboxes",
+        "n|type|public.conversation_sandboxes",
+        "n|rel|public.conversation_sandboxes_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "conversation_sandboxes"],
+      "writes": [
+        "s|fk|public.conversation_sandboxes.conversation_sandboxes_conversation_id_conversations_id_fkey",
+        "n|fk|public.conversation_sandboxes.conversation_sandboxes_conversation_id_conversations_id_fkey",
+        "e|fk|public.conversation_sandboxes.conversation_sandboxes_conversation_id_conversations_id_fkey",
+        "n|con|public.conversation_sandboxes.conversation_sandboxes_conversation_id_conversations_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.conversation_sandboxes",
+        "n|sch|public",
+        "n|tbl|public.conversations",
+        "n|sch|public",
+        "n|col|public.conversation_sandboxes.conversation_id",
+        "n|col|public.conversations.id",
+        "e|uniqueness|public.conversations.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "conversation_sandboxes",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "conversation_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "sandbox_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "snapshot_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "lock_token",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "lock_expires_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "conversation_sandboxes_conversation_id_conversations_id_fkey",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "conversations",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "conversation_sandboxes_pkey",
+        "columns": ["conversation_id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

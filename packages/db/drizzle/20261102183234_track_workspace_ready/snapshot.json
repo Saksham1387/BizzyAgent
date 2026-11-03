@@ -1,0 +1,47 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "6bfd6e4f-a835-4d3c-be86-cab2116d67ac",
+  "prevIds": [
+    "f4e3ba57-787d-4ce9-9838-f72b0694d7cf"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "conversation_sandboxes",
+        "workspace_ready"
+      ],
+      "writes": [
+        "s|col|public.conversation_sandboxes.workspace_ready",
+        "n|col|public.conversation_sandboxes.workspace_ready",
+        "e|col|public.conversation_sandboxes.workspace_ready"
+      ],
+      "reads": [
+        "n|tbl|public.conversation_sandboxes",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "conversation_sandboxes",
+        "name": "workspace_ready",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

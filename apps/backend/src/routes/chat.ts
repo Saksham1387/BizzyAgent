@@ -1,7 +1,18 @@
 import { Router } from "express";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
-import { Agent, type AgentHistoryMessage } from "agent";
-import { conversationsTable, db, messagesTable, repositoriesTable } from "db";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import {
+  Agent,
+  ConversationWorkspaceRecoveryError,
+  type AgentHistoryMessage,
+} from "agent";
+import {
+  conversationSandboxesTable,
+  conversationsTable,
+  db,
+  messagesTable,
+  repositoriesTable,
+} from "db";
 import { HttpError } from "../lib/errors.ts";
 import { isUuid, requireString } from "../lib/http.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -57,6 +68,86 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     throw new HttpError(404, "Conversation not found");
   }
 
+  const lockToken = randomUUID();
+  await db
+    .insert(conversationSandboxesTable)
+    .values({ conversationId })
+    .onConflictDoNothing();
+
+  const now = new Date();
+  const [lease] = await db
+    .update(conversationSandboxesTable)
+    .set({
+      lockToken,
+      lockExpiresAt: new Date(now.getTime() + 30 * 60_000),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(conversationSandboxesTable.conversationId, conversationId),
+        or(
+          isNull(conversationSandboxesTable.lockToken),
+          isNull(conversationSandboxesTable.lockExpiresAt),
+          lt(conversationSandboxesTable.lockExpiresAt, now),
+        ),
+      ),
+    )
+    .returning({ conversationId: conversationSandboxesTable.conversationId });
+
+  if (!lease) {
+    throw new HttpError(
+      409,
+      "Another message is already using this conversation workspace",
+    );
+  }
+
+  const lockHeartbeat = setInterval(() => {
+    const heartbeatAt = new Date();
+    void db
+      .update(conversationSandboxesTable)
+      .set({
+        lockExpiresAt: new Date(heartbeatAt.getTime() + 30 * 60_000),
+        updatedAt: heartbeatAt,
+      })
+      .where(
+        and(
+          eq(conversationSandboxesTable.conversationId, conversationId),
+          eq(conversationSandboxesTable.lockToken, lockToken),
+        ),
+      )
+      .catch((error) =>
+        console.error("Failed to extend workspace lease", error),
+      );
+  }, 60_000);
+
+  const releaseLock = () =>
+    db
+      .update(conversationSandboxesTable)
+      .set({ lockToken: null, lockExpiresAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(conversationSandboxesTable.conversationId, conversationId),
+          eq(conversationSandboxesTable.lockToken, lockToken),
+        ),
+      );
+
+  res.once("finish", () => {
+    clearInterval(lockHeartbeat);
+    void releaseLock().catch((error) =>
+      console.error("Failed to release conversation workspace lease", error),
+    );
+  });
+
+  const [sandboxState] = await db
+    .select({
+      sandboxId: conversationSandboxesTable.sandboxId,
+      snapshotId: conversationSandboxesTable.snapshotId,
+      workspaceReady: conversationSandboxesTable.workspaceReady,
+    })
+    .from(conversationSandboxesTable)
+    .where(eq(conversationSandboxesTable.conversationId, conversationId))
+    .limit(1);
+
   const historyRows = await db
     .select({
       role: messagesTable.role,
@@ -92,9 +183,63 @@ chatRouter.post("/", requireAuth, async (req, res) => {
   let result;
 
   try {
-    result = await agent.run(content, { history });
+    result = await agent.run(content, {
+      history,
+      sandboxId: sandboxState?.sandboxId,
+      snapshotId: sandboxState?.snapshotId,
+      workspaceReady: sandboxState?.workspaceReady,
+      snapshotName: `bizzy-conversation-${conversationId}`,
+      onSandboxId: async (sandboxId) => {
+        const [updated] = await db
+          .update(conversationSandboxesTable)
+          .set({ sandboxId, updatedAt: new Date() })
+          .where(
+            and(
+              eq(conversationSandboxesTable.conversationId, conversationId),
+              eq(conversationSandboxesTable.lockToken, lockToken),
+            ),
+          )
+          .returning({
+            conversationId: conversationSandboxesTable.conversationId,
+          });
+        if (!updated) throw new Error("Conversation workspace lease was lost");
+      },
+      onWorkspaceReady: async (workspaceReady) => {
+        const [updated] = await db
+          .update(conversationSandboxesTable)
+          .set({ workspaceReady, updatedAt: new Date() })
+          .where(
+            and(
+              eq(conversationSandboxesTable.conversationId, conversationId),
+              eq(conversationSandboxesTable.lockToken, lockToken),
+            ),
+          )
+          .returning({
+            conversationId: conversationSandboxesTable.conversationId,
+          });
+        if (!updated) throw new Error("Conversation workspace lease was lost");
+      },
+      onSnapshotId: async (snapshotId) => {
+        const [updated] = await db
+          .update(conversationSandboxesTable)
+          .set({ snapshotId, updatedAt: new Date() })
+          .where(
+            and(
+              eq(conversationSandboxesTable.conversationId, conversationId),
+              eq(conversationSandboxesTable.lockToken, lockToken),
+            ),
+          )
+          .returning({
+            conversationId: conversationSandboxesTable.conversationId,
+          });
+        if (!updated) throw new Error("Conversation workspace lease was lost");
+      },
+    });
   } catch (error) {
     console.error("Chat agent failed", error);
+    if (error instanceof ConversationWorkspaceRecoveryError) {
+      throw new HttpError(409, error.message);
+    }
     throw new HttpError(502, "Agent failed to process the message");
   }
 
@@ -256,6 +401,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     throw new Error("Failed to persist assistant response");
   }
 
+  await releaseLock();
   res.json({
     response: result.answer,
     userMessage,

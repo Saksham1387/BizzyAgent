@@ -1,0 +1,1 @@
+ALTER TABLE "conversation_sandboxes" ADD COLUMN "workspace_ready" boolean DEFAULT false NOT NULL;

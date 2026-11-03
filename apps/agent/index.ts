@@ -1,6 +1,8 @@
 import { Agent } from "./agent.ts";
 
 export { Agent } from "./agent.ts";
+export { ConversationWorkspaceRecoveryError } from "./agent.ts";
+export { deleteConversationWorkspace } from "./agent.ts";
 export type {
   AgentHistoryMessage,
   AgentOptions,

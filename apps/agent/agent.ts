@@ -4,7 +4,7 @@ import type {
   ChatResult,
   ChatToolCall,
 } from "@openrouter/sdk/models";
-import { CommandExitError, Sandbox } from "e2b";
+import { CommandExitError, Sandbox, SandboxNotFoundError } from "e2b";
 import { GitHubApp, parseRepoUrl, type GitHubAppOptions } from "./github.ts";
 import { createTools, type Tool } from "./tools.ts";
 
@@ -31,12 +31,46 @@ export type AgentRunOptions = {
   maxIterations?: number;
   systemPrompt?: string;
   history?: AgentHistoryMessage[];
+  sandboxId?: string | null;
+  snapshotId?: string | null;
+  workspaceReady?: boolean;
+  snapshotName?: string;
+  onSandboxId?: (sandboxId: string) => Promise<void>;
+  onWorkspaceReady?: (workspaceReady: boolean) => Promise<void>;
+  onSnapshotId?: (snapshotId: string) => Promise<void>;
 };
 
 export type AgentResult = {
   answer: string;
   messages: ChatMessages[];
+  sandboxId: string;
+  snapshotId: string | null;
 };
+
+export class ConversationWorkspaceRecoveryError extends Error {
+  constructor() {
+    super(
+      "This conversation's sandbox expired before a recovery snapshot was saved. Its workspace cannot be restored; start a new conversation to continue.",
+    );
+    this.name = "ConversationWorkspaceRecoveryError";
+  }
+}
+
+export async function deleteConversationWorkspace(
+  sandboxId: string | null,
+  snapshotId: string | null,
+) {
+  const cleanup = await Promise.allSettled([
+    ...(sandboxId ? [Sandbox.kill(sandboxId)] : []),
+    ...(snapshotId ? [Sandbox.deleteSnapshot(snapshotId)] : []),
+  ]);
+
+  for (const result of cleanup) {
+    if (result.status === "rejected") {
+      console.error("Failed to clean up conversation workspace", result.reason);
+    }
+  }
+}
 
 export class Agent {
   private readonly openrouter: OpenRouter;
@@ -80,14 +114,68 @@ export class Agent {
     query: string,
     options: AgentRunOptions = {},
   ): Promise<AgentResult> {
-    const sandbox = await Sandbox.create({
-      timeoutMs: this.sandboxTimeoutMs,
-    });
+    let sandbox: Sandbox;
+    let shouldClone = false;
 
+    if (options.sandboxId) {
+      try {
+        sandbox = await Sandbox.connect(options.sandboxId, {
+          timeoutMs: this.sandboxTimeoutMs,
+        });
+        shouldClone = !(options.workspaceReady || options.snapshotId);
+      } catch (error) {
+        if (!(error instanceof SandboxNotFoundError)) throw error;
+        console.warn(
+          `Sandbox ${options.sandboxId} expired; restoring its saved workspace`,
+        );
+
+        if (options.snapshotId) {
+          sandbox = await Sandbox.create(options.snapshotId, {
+            timeoutMs: this.sandboxTimeoutMs,
+          });
+        } else if (options.workspaceReady) {
+          throw new ConversationWorkspaceRecoveryError();
+        } else {
+          sandbox = await Sandbox.create({
+            timeoutMs: this.sandboxTimeoutMs,
+          });
+          shouldClone = true;
+        }
+      }
+    } else if (options.snapshotId) {
+      sandbox = await Sandbox.create(options.snapshotId, {
+        timeoutMs: this.sandboxTimeoutMs,
+      });
+    } else if (options.workspaceReady) {
+      throw new ConversationWorkspaceRecoveryError();
+    } else {
+      sandbox = await Sandbox.create({ timeoutMs: this.sandboxTimeoutMs });
+      shouldClone = true;
+    }
+
+    let workspaceReady = !shouldClone;
+    const persistWorkspace = Boolean(
+      options.sandboxId ||
+      options.snapshotId ||
+      options.workspaceReady ||
+      options.snapshotName ||
+      options.onSandboxId ||
+      options.onWorkspaceReady ||
+      options.onSnapshotId,
+    );
+    let snapshotId = options.snapshotId ?? null;
+    let answer: string;
+    let messages: ChatMessages[];
     try {
-      await this.prepareSandbox(sandbox);
+      await options.onSandboxId?.(sandbox.sandboxId);
 
-      const messages: ChatMessages[] = [
+      if (shouldClone) {
+        await this.prepareSandbox(sandbox, Boolean(options.sandboxId));
+        workspaceReady = true;
+        await options.onWorkspaceReady?.(true);
+      }
+
+      messages = [
         {
           role: "system",
           content: options.systemPrompt ?? this.defaultSystemPrompt(),
@@ -99,22 +187,65 @@ export class Agent {
         { role: "user", content: query },
       ];
 
-      const answer = await this.runLoop(
+      answer = await this.runLoop(
         sandbox,
         messages,
         this.mainTools,
         options.maxIterations ?? this.maxIterations,
         "main agent",
       );
-
-      return { answer, messages };
     } finally {
-      await sandbox.kill();
+      if (workspaceReady && persistWorkspace) {
+        try {
+          const snapshotOptions = {
+            ...(options.snapshotName ? { name: options.snapshotName } : {}),
+          };
+          let snapshot;
+          try {
+            snapshot = await Sandbox.createSnapshot(sandbox.sandboxId, {
+              ...snapshotOptions,
+              mode: "filesystem",
+            });
+          } catch (error) {
+            console.warn(
+              "Filesystem-only snapshots are unavailable; trying a full snapshot",
+              error,
+            );
+            snapshot = await Sandbox.createSnapshot(sandbox.sandboxId, {
+              ...snapshotOptions,
+              mode: "full",
+            });
+          }
+          snapshotId = snapshot.snapshotId;
+          await options.onSnapshotId?.(snapshotId);
+        } catch (error) {
+          console.error(
+            "Failed to save conversation workspace snapshot",
+            error,
+          );
+        }
+      }
+
+      if (persistWorkspace) {
+        try {
+          await sandbox.pause();
+        } catch (error) {
+          console.error("Failed to pause conversation sandbox", error);
+        }
+      } else {
+        await sandbox.kill();
+      }
     }
+
+    return { answer, messages, sandboxId: sandbox.sandboxId, snapshotId };
   }
 
   private defaultSystemPrompt() {
-    return `You are a helpful coding agent working inside a Linux sandbox. The project is cloned at ${this.sandboxPath}. You can run bash, delegate with run_subagent, list and update issues, create issues, inspect pull requests and their CI checks, and create pull requests. Use github_list_issues to find issues; it excludes pull requests. Use the GitHub inspection tools when asked about a pull request or its checks. Make requested code changes in the sandbox first, and report actual CI results rather than assuming checks passed. The GitHub tools handle short-lived installation tokens automatically; never print or request tokens. When the task is complete, reply with a short summary and stop calling tools.`;
+    return `You are a helpful coding agent working inside a Linux sandbox. The project is cloned at ${this.sandboxPath}. You can run bash, delegate with run_subagent, list and update issues, create issues, inspect pull requests and their CI checks, and create pull requests.
+
+Plan the work before making changes. For a complex task with multiple independent workstreams, proactively use run_subagent to delegate a clearly bounded part of the work; do this when it is likely to improve coverage or save meaningful time, even if the user did not ask for delegation. Complexity can include changes across separate subsystems, a broad investigation plus implementation, or substantial independent documentation or verification work. Do not delegate simple, tightly coupled, or small tasks where delegation adds overhead. You can run one subagent per task. The subagent shares this sandbox, has Bash access only, and cannot delegate further. Assign non-overlapping work, state the relevant context and expected outcome, and avoid having both agents edit the same files. After it returns, inspect its result, integrate it with your own work, and verify the complete change. Delegation does not replace your responsibility for the final result.
+
+Use github_list_issues to find issues; it excludes pull requests. Use the GitHub inspection tools when asked about a pull request or its checks. Make requested code changes in the sandbox first, and report actual CI results rather than assuming checks passed. The GitHub tools handle short-lived installation tokens automatically; never print or request tokens. When the task is complete, reply with a short summary and stop calling tools.`;
   }
 
   private async runLoop(
@@ -182,8 +313,14 @@ export class Agent {
     return result;
   }
 
-  private async prepareSandbox(sandbox: Sandbox) {
+  private async prepareSandbox(sandbox: Sandbox, resetExisting = false) {
     const authHeader = await this.github.getGitAuthHeader();
+
+    if (resetExisting) {
+      await sandbox.commands.run(
+        `rm -rf -- ${JSON.stringify(this.sandboxPath)}`,
+      );
+    }
 
     await sandbox.commands.run(
       `git -c http.extraheader=${JSON.stringify(authHeader)} clone --depth 1 ${JSON.stringify(this.repoUrl)} ${JSON.stringify(this.sandboxPath)}`,
